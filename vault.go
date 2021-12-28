@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"sync"
 
 	"github.com/L-Carlos/secret/encrypt"
@@ -27,7 +26,33 @@ func FileVault(encodingKey, filePath string) *Vault {
 
 }
 
-func (v *Vault) loadKeyValues() error {
+func (v *Vault) writeKeyValues(w io.Writer) error {
+	enc := json.NewEncoder(w)
+	return enc.Encode(v.keyValues)
+}
+
+func (v *Vault) readKeyValues(r io.Reader) error {
+	dec := json.NewDecoder(r)
+	return dec.Decode(&v.keyValues)
+}
+
+func (v *Vault) save() error {
+	f, err := os.OpenFile(v.filepath, os.O_RDWR|os.O_CREATE, 0755)
+	if err != nil {
+		return err
+	}
+
+	defer f.Close()
+
+	w, err := encrypt.EncryptWriter(v.encodingKey, f)
+	if err != nil {
+		return err
+	}
+
+	return v.writeKeyValues(w)
+}
+
+func (v *Vault) load() error {
 	f, err := os.Open(v.filepath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -39,65 +64,26 @@ func (v *Vault) loadKeyValues() error {
 	}
 	defer f.Close()
 
-	var sb strings.Builder
-	_, err = io.Copy(&sb, f)
+	r, err := encrypt.DecryptReader(v.encodingKey, f)
 	if err != nil {
 		return err
 	}
 
-	decryptedJSON, err := encrypt.Decrypt(v.encodingKey, sb.String())
-	if err != nil {
-		return err
-	}
-
-	reader := strings.NewReader(decryptedJSON)
-	dec := json.NewDecoder(reader)
-
-	return dec.Decode(&v.keyValues)
-}
-
-func (v *Vault) saveKeyValues() error {
-	var sb strings.Builder
-	enc := json.NewEncoder(&sb)
-	err := enc.Encode(v.keyValues)
-	if err != nil {
-		return err
-	}
-
-	encryptedJSON, err := encrypt.Encrypt(v.encodingKey, sb.String())
-	if err != nil {
-		return err
-	}
-
-	f, err := os.OpenFile(v.filepath, os.O_RDWR|os.O_CREATE, 0755)
-	if err != nil {
-		return err
-	}
-
-	defer f.Close()
-
-	_, err = io.WriteString(f, encryptedJSON)
-
-	return err
+	return v.readKeyValues(r)
 }
 
 func (v *Vault) Get(key string) (string, error) {
 	v.mutex.Lock()
 	defer v.mutex.Unlock()
 
-	err := v.loadKeyValues()
+	err := v.load()
 	if err != nil {
 		return "", err
 	}
-	hexValue, ok := v.keyValues[key]
+	value, ok := v.keyValues[key]
 	if !ok {
 		return "", fmt.Errorf("secret: no value for (%s) key", key)
 	}
-	value, err := encrypt.Decrypt(v.encodingKey, hexValue)
-	if err != nil {
-		return "", err
-	}
-
 	return value, nil
 }
 
@@ -105,17 +91,12 @@ func (v *Vault) Set(key, value string) error {
 	v.mutex.Lock()
 	defer v.mutex.Unlock()
 
-	hexValue, err := encrypt.Encrypt(v.encodingKey, value)
+	err := v.load()
 	if err != nil {
 		return err
 	}
 
-	err = v.loadKeyValues()
-	if err != nil {
-		return err
-	}
+	v.keyValues[key] = value
 
-	v.keyValues[key] = hexValue
-
-	return v.saveKeyValues()
+	return v.save()
 }
