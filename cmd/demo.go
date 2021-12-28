@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	v := secret.MemoryVault("fake-key")
+	v := secret.FileVault("fake-key", ".secret")
 
 	err := v.Set("demo_key", "demo_value")
 	must(err)
