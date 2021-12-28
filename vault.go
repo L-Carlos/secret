@@ -1,6 +1,10 @@
 package secret
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/L-Carlos/secret/encrypt"
+)
 
 type Vault struct {
 	encodingKey string
@@ -14,12 +18,22 @@ func MemoryVault(encodingKey string) Vault {
 }
 
 func (v *Vault) Get(key string) (string, error) {
-	if value, ok := v.keyValues[key]; ok {
-		return value, nil
+	hexValue, ok := v.keyValues[key]
+	if !ok {
+		return "", fmt.Errorf("secret: no value for (%s) key", key)
 	}
-	return "", fmt.Errorf("secret: no value for (%s) key", key)
+	value, err := encrypt.Decrypt(v.encodingKey, hexValue)
+	if err != nil {
+		return "", err
+	}
+	return value, nil
 }
 
-func (v *Vault) Set(key, value string) {
-	v.keyValues[key] = value
+func (v *Vault) Set(key, value string) error {
+	hexValue, err := encrypt.Encrypt(v.encodingKey, value)
+	if err != nil {
+		return err
+	}
+	v.keyValues[key] = hexValue
+	return nil
 }
