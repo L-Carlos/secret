@@ -113,3 +113,14 @@ func (v *Vault) List() error {
 
 	return nil
 }
+
+func (v *Vault) Remove(key string) error {
+	err := v.load()
+	if err != nil {
+		return err
+	}
+
+	delete(v.keyValues, key)
+
+	return v.save()
+}
