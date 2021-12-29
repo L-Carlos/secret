@@ -37,6 +37,9 @@ func (v *Vault) readKeyValues(r io.Reader) error {
 }
 
 func (v *Vault) save() error {
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
+
 	f, err := os.OpenFile(v.filepath, os.O_RDWR|os.O_CREATE, 0755)
 	if err != nil {
 		return err
@@ -53,6 +56,9 @@ func (v *Vault) save() error {
 }
 
 func (v *Vault) load() error {
+	v.mutex.Lock()
+	defer v.mutex.Unlock()
+
 	f, err := os.Open(v.filepath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -73,9 +79,6 @@ func (v *Vault) load() error {
 }
 
 func (v *Vault) Get(key string) (string, error) {
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
-
 	err := v.load()
 	if err != nil {
 		return "", err
@@ -88,9 +91,6 @@ func (v *Vault) Get(key string) (string, error) {
 }
 
 func (v *Vault) Set(key, value string) error {
-	v.mutex.Lock()
-	defer v.mutex.Unlock()
-
 	err := v.load()
 	if err != nil {
 		return err
@@ -99,4 +99,17 @@ func (v *Vault) Set(key, value string) error {
 	v.keyValues[key] = value
 
 	return v.save()
+}
+
+func (v *Vault) List() error {
+	err := v.load()
+	if err != nil {
+		return err
+	}
+
+	for k, v := range v.keyValues {
+		fmt.Printf("%s=%s\n", k, v)
+	}
+
+	return nil
 }
